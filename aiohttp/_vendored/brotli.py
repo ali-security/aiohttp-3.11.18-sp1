@@ -3,7 +3,14 @@
 # Distributed under MIT license.
 # See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 
-"""Functions to compress and decompress data using the Brotli library."""
+"""Functions to compress and decompress data using the Brotli library.
+
+Vendored copy of Brotli 1.2.0 (CPython). The only change from upstream is the
+import of the C extension: upstream does a bare ``import _brotli`` (top-level),
+which would collide in ``sys.modules`` with a system Brotli's ``_brotli``. Here
+the C extension lives at ``aiohttp._vendored._brotli`` and is imported via a
+package-relative import so it gets a distinct ``sys.modules`` key.
+"""
 
 from . import _brotli
 
