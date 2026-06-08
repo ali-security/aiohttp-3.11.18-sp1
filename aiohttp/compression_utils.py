@@ -1,11 +1,10 @@
 import asyncio
 import importlib
 import importlib.util
-import platform
 import zlib
 from concurrent.futures import Executor
 from types import ModuleType
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 
 def _import_system_brotli() -> Optional[ModuleType]:
@@ -30,6 +29,8 @@ def _brotli_has_max_length_cap(mod: ModuleType) -> bool:
 
 
 def _import_vendored_brotli() -> ModuleType:
+    import platform
+
     if platform.python_implementation() == "CPython":
         from ._vendored import brotli
 
@@ -49,10 +50,30 @@ def _import_vendored_brotli() -> ModuleType:
 _brotli: Optional[ModuleType] = _import_system_brotli()
 HAS_BROTLI = _brotli is not None
 
-if _brotli is not None and not _brotli_has_max_length_cap(_brotli):
-    _brotli_decompressor: Optional[ModuleType] = _import_vendored_brotli()
-else:
-    _brotli_decompressor = _brotli
+# The actual decompressor module is resolved lazily (see ``__getattr__`` and
+# ``_get_brotli_decompressor`` below): when the system brotli is too old we have
+# to import the vendored backend, which loads a C extension. Doing that eagerly
+# at module import would add startup cost to ``import aiohttp`` for every user,
+# even those who never decompress brotli, so we defer it until first use.
+_UNRESOLVED_BROTLI = object()
+_brotli_decompressor_cache: Any = _UNRESOLVED_BROTLI
+
+
+def _get_brotli_decompressor() -> Optional[ModuleType]:
+    global _brotli_decompressor_cache
+    if _brotli_decompressor_cache is _UNRESOLVED_BROTLI:
+        if _brotli is not None and not _brotli_has_max_length_cap(_brotli):
+            _brotli_decompressor_cache = _import_vendored_brotli()
+        else:
+            _brotli_decompressor_cache = _brotli
+    return cast(Optional[ModuleType], _brotli_decompressor_cache)
+
+
+def __getattr__(name: str) -> Any:
+    # Expose ``_brotli_decompressor`` as a lazily-resolved module attribute.
+    if name == "_brotli_decompressor":
+        return _get_brotli_decompressor()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 MAX_SYNC_CHUNK_SIZE = 1024
@@ -198,12 +219,13 @@ class BrotliDecompressor:
     # since they share an import name. The top branches
     # are for 'brotlicffi' and bottom branches for 'Brotli'.
     def __init__(self) -> None:
-        if not HAS_BROTLI or _brotli_decompressor is None:
+        decompressor = _get_brotli_decompressor()
+        if not HAS_BROTLI or decompressor is None:
             raise RuntimeError(
                 "The brotli decompression is not available. "
                 "Please install `Brotli` module"
             )
-        self._obj = _brotli_decompressor.Decompressor()
+        self._obj = decompressor.Decompressor()
 
     def decompress_sync(self, data: bytes, max_length: int = 0) -> bytes:
         # CVE-2025-69223: ``max_length`` caps the decompressed output. It is
