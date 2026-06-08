@@ -164,9 +164,8 @@ def test_no_system_brotli_disables_br_subprocess() -> None:
             return False
         assert asyncio.run(_check()) is True
 
-        import inspect
-        from aiohttp import client_reqrep
-        assert "if HAS_BROTLI:" in inspect.getsource(client_reqrep)
+        from aiohttp.client_reqrep import _gen_default_accept_encoding
+        assert _gen_default_accept_encoding() == "gzip, deflate"
         print("OK br disabled, vendored still ships")
         """)
     assert result.returncode == 0, result.stderr
