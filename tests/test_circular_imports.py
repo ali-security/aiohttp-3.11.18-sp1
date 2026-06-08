@@ -51,11 +51,13 @@ def _find_all_importables(pkg: ModuleType) -> List[str]:
     Return them in order.
     """
     return sorted(
-        set(
-            chain.from_iterable(
+        {
+            name
+            for name in chain.from_iterable(
                 _discover_path_importables(Path(p), pkg.__name__) for p in pkg.__path__
-            ),
-        ),
+            )
+            if not name.startswith(f"{pkg.__name__}._vendored")
+        },
     )
 
 

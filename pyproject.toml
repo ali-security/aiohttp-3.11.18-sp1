@@ -1,6 +1,12 @@
 [build-system]
 requires = [
-    "setuptools >= 46.4.0",
+    # setuptools >= 62.3.0 required for recursive ``**`` globs in
+    # ``[options.package_data]`` (used to ship the vendored Brotli C source).
+    "setuptools >= 62.3.0",
+    # CVE-2025-69223: PyPy wheels compile the vendored brotlicffi backend via
+    # cffi at build time (CPython uses the vendored Brotli C extension instead).
+    "cffi >= 1.0.0; python_version < '3.13' and platform_python_implementation != 'CPython'",
+    "cffi >= 1.17.0; python_version >= '3.13' and platform_python_implementation != 'CPython'",
 ]
 build-backend = "setuptools.build_meta"
 

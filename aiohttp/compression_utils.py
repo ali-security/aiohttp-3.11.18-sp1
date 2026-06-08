@@ -1,19 +1,62 @@
 import asyncio
+import importlib
+import importlib.util
+import platform
 import zlib
 from concurrent.futures import Executor
+from types import ModuleType
 from typing import Optional, cast
 
-try:
-    try:
-        import brotlicffi as brotli
-    except ImportError:
-        import brotli
 
-    HAS_BROTLI = True
-except ImportError:  # pragma: no cover
-    HAS_BROTLI = False
+def _import_system_brotli() -> Optional[ModuleType]:
+    for name in ("brotlicffi", "brotli"):
+        try:
+            if importlib.util.find_spec(name) is None:
+                continue
+        except (ImportError, ValueError):  # pragma: no cover
+            continue
+        try:
+            return importlib.import_module(name)
+        except Exception:  # pragma: no cover
+            return None
+    return None
+
+
+def _brotli_has_max_length_cap(mod: ModuleType) -> bool:
+    try:
+        return tuple(int(p) for p in mod.__version__.split(".")[:2]) >= (1, 2)
+    except Exception:  # pragma: no cover
+        return False
+
+
+def _import_vendored_brotli() -> ModuleType:
+    if platform.python_implementation() == "CPython":
+        from ._vendored import brotli
+
+        mod: ModuleType = brotli
+    else:
+        from ._vendored import brotlicffi
+
+        mod = brotlicffi
+    return mod
+
+
+# CVE-2025-69223: brotli decompression must be able to cap its output size.
+# That capability only exists in Brotli / brotlicffi >= 1.2. If the system has
+# brotli installed but it predates the cap, fall back to the bundled copy under
+# ``aiohttp._vendored`` so the limit can be enforced without forcing users to
+# bump their declared ``Brotli`` / ``brotlicffi`` requirement.
+_brotli: Optional[ModuleType] = _import_system_brotli()
+HAS_BROTLI = _brotli is not None
+
+if _brotli is not None and not _brotli_has_max_length_cap(_brotli):
+    _brotli_decompressor: Optional[ModuleType] = _import_vendored_brotli()
+else:
+    _brotli_decompressor = _brotli
+
 
 MAX_SYNC_CHUNK_SIZE = 1024
+DEFAULT_MAX_DECOMPRESS_SIZE = 2**25  # 32MiB
 
 
 def encoding_to_mode(
@@ -151,21 +194,24 @@ class ZLibDecompressor(ZlibBaseHandler):
 
 
 class BrotliDecompressor:
-    # Supports both 'brotlipy' and 'Brotli' packages
+    # Supports both 'brotlicffi' and 'Brotli' packages
     # since they share an import name. The top branches
-    # are for 'brotlipy' and bottom branches for 'Brotli'
+    # are for 'brotlicffi' and bottom branches for 'Brotli'.
     def __init__(self) -> None:
-        if not HAS_BROTLI:
+        if not HAS_BROTLI or _brotli_decompressor is None:
             raise RuntimeError(
                 "The brotli decompression is not available. "
                 "Please install `Brotli` module"
             )
-        self._obj = brotli.Decompressor()
+        self._obj = _brotli_decompressor.Decompressor()
 
-    def decompress_sync(self, data: bytes) -> bytes:
+    def decompress_sync(self, data: bytes, max_length: int = 0) -> bytes:
+        # CVE-2025-69223: ``max_length`` caps the decompressed output. It is
+        # honoured by Brotli / brotlicffi >= 1.2 (or the vendored fallback);
+        # ``0`` means unlimited, matching the zlib convention.
         if hasattr(self._obj, "decompress"):
-            return cast(bytes, self._obj.decompress(data))
-        return cast(bytes, self._obj.process(data))
+            return cast(bytes, self._obj.decompress(data, max_length))
+        return cast(bytes, self._obj.process(data, max_length))
 
     def flush(self) -> bytes:
         if hasattr(self._obj, "flush"):
