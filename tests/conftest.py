@@ -38,6 +38,19 @@ pytest_plugins = ["aiohttp.pytest_plugin", "pytester"]
 IS_HPUX = sys.platform.startswith("hp-ux")
 IS_LINUX = sys.platform.startswith("linux")
 
+# Pre-warm the non-ASCII codecs the suite uses inside the event loop. The first
+# `str.encode("cp1251")` lazily imports `encodings.cp1251`, and on a cold
+# __pycache__ the import machinery writes the .pyc (io.BufferedWriter.write),
+# which blockbuster flags as a blocking call when it happens inside a running
+# loop. Importing the codecs here (at collection time, outside any loop) warms
+# the bytecode cache and the codec registry so later in-loop encodes do no I/O.
+for _codec in ("cp1251", "koi8-r", "cp1252", "latin-1", "utf-16", "iso-8859-1"):
+    try:
+        "т".encode(_codec, "replace")
+        b"\xc0".decode(_codec, "replace")
+    except LookupError:  # pragma: no cover
+        pass
+
 
 @pytest.fixture
 def tls_certificate_authority():
