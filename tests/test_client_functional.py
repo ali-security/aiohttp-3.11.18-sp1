@@ -49,7 +49,7 @@ from aiohttp.client_exceptions import (
 from aiohttp.client_reqrep import ClientRequest
 from aiohttp.compression_utils import DEFAULT_MAX_DECOMPRESS_SIZE
 from aiohttp.connector import Connection
-from aiohttp.http_exceptions import DecompressSizeError
+from aiohttp.http_exceptions import ContentEncodingError
 from aiohttp.http_writer import StreamWriter
 from aiohttp.pytest_plugin import AiohttpClient, AiohttpServer
 from aiohttp.test_utils import TestClient, TestServer, unused_port
@@ -2165,10 +2165,10 @@ async def test_bad_payload_compression(aiohttp_client) -> None:
 
 
 async def test_payload_decompress_size_limit(aiohttp_client: AiohttpClient) -> None:
-    """Test that decompression size limit triggers DecompressSizeError.
+    """Test that decompression size limit triggers ContentEncodingError.
 
     When a compressed payload expands beyond the configured limit,
-    we raise DecompressSizeError.
+    we raise ContentEncodingError.
     """
     # Create a highly compressible payload that exceeds the decompression limit.
     # 64MiB of repeated bytes compresses to ~32KB but expands beyond the
@@ -2193,7 +2193,7 @@ async def test_payload_decompress_size_limit(aiohttp_client: AiohttpClient) -> N
         with pytest.raises(aiohttp.ClientPayloadError) as exc_info:
             await resp.read()
 
-        assert isinstance(exc_info.value.__cause__, DecompressSizeError)
+        assert isinstance(exc_info.value.__cause__, ContentEncodingError)
         assert "Decompressed data exceeds" in str(exc_info.value.__cause__)
 
 
@@ -2201,7 +2201,7 @@ async def test_payload_decompress_size_limit(aiohttp_client: AiohttpClient) -> N
 async def test_payload_decompress_size_limit_brotli(
     aiohttp_client: AiohttpClient,
 ) -> None:
-    """Test that brotli decompression size limit triggers DecompressSizeError."""
+    """Test that brotli decompression size limit triggers ContentEncodingError."""
     assert brotli is not None
     # Create a highly compressible payload that exceeds the decompression limit.
     original = b"A" * (64 * 2**20)
@@ -2223,7 +2223,7 @@ async def test_payload_decompress_size_limit_brotli(
         with pytest.raises(aiohttp.ClientPayloadError) as exc_info:
             await resp.read()
 
-        assert isinstance(exc_info.value.__cause__, DecompressSizeError)
+        assert isinstance(exc_info.value.__cause__, ContentEncodingError)
         assert "Decompressed data exceeds" in str(exc_info.value.__cause__)
 
 
@@ -2231,7 +2231,7 @@ async def test_payload_decompress_size_limit_brotli(
 async def test_payload_decompress_size_limit_zstd(
     aiohttp_client: AiohttpClient,
 ) -> None:
-    """Test that zstd decompression size limit triggers DecompressSizeError."""
+    """Test that zstd decompression size limit triggers ContentEncodingError."""
     assert ZstdCompressor is not None
     # Create a highly compressible payload that exceeds the decompression limit.
     original = b"A" * (64 * 2**20)
@@ -2254,7 +2254,7 @@ async def test_payload_decompress_size_limit_zstd(
         with pytest.raises(aiohttp.ClientPayloadError) as exc_info:
             await resp.read()
 
-        assert isinstance(exc_info.value.__cause__, DecompressSizeError)
+        assert isinstance(exc_info.value.__cause__, ContentEncodingError)
         assert "Decompressed data exceeds" in str(exc_info.value.__cause__)
 
 

@@ -47,7 +47,6 @@ from .http_exceptions import (
     BadStatusLine,
     ContentEncodingError,
     ContentLengthError,
-    DecompressSizeError,
     InvalidHeader,
     InvalidURLError,
     LineTooLong,
@@ -1022,7 +1021,7 @@ class DeflateBuffer:
 
         # Check if decompression limit was exceeded
         if len(chunk) > self._max_decompress_size:
-            raise DecompressSizeError(
+            raise ContentEncodingError(
                 "Decompressed data exceeds the configured limit of %d bytes"
                 % self._max_decompress_size
             )

@@ -387,7 +387,7 @@ class TestPartReader:
             result = b""
             while not obj.at_eof():
                 chunk = await obj.read_chunk(size=6)
-                result += await obj.decode(chunk)
+                result += obj.decode(chunk)
         assert b"Time to Relax!" == result
 
     @pytest.mark.parametrize("encoding", ("binary", "8bit", "7bit"))

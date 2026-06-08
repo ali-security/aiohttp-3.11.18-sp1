@@ -322,7 +322,7 @@ class BodyPartReader:
         while not self._at_eof:
             data.extend(await self.read_chunk(self.chunk_size))
         if decode:
-            return await self.decode(data)
+            return self.decode(data)
         return data
 
     async def read_chunk(self, size: int = chunk_size) -> bytes:
@@ -502,7 +502,7 @@ class BodyPartReader:
         """Returns True if the boundary was reached or False otherwise."""
         return self._at_eof
 
-    async def decode(self, data: bytes) -> bytes:
+    def decode(self, data: bytes) -> bytes:
         """Decodes data.
 
         Decoding is done according the specified Content-Encoding
@@ -512,18 +512,18 @@ class BodyPartReader:
             data = self._decode_content_transfer(data)
         # https://datatracker.ietf.org/doc/html/rfc7578#section-4.8
         if not self._is_form_data and CONTENT_ENCODING in self.headers:
-            return await self._decode_content(data)
+            return self._decode_content(data)
         return data
 
-    async def _decode_content(self, data: bytes) -> bytes:
+    def _decode_content(self, data: bytes) -> bytes:
         encoding = self.headers.get(CONTENT_ENCODING, "").lower()
         if encoding == "identity":
             return data
         if encoding in {"deflate", "gzip"}:
-            return await ZLibDecompressor(
+            return ZLibDecompressor(
                 encoding=encoding,
                 suppress_deflate_header=True,
-            ).decompress(data, max_length=self._max_decompress_size)
+            ).decompress_sync(data, max_length=self._max_decompress_size)
 
         raise RuntimeError(f"unknown content encoding: {encoding}")
 
@@ -587,7 +587,7 @@ class BodyPartReaderPayload(Payload):
         field = self._value
         chunk = await field.read_chunk(size=2**16)
         while chunk:
-            await writer.write(await field.decode(chunk))
+            await writer.write(field.decode(chunk))
             chunk = await field.read_chunk(size=2**16)
 
 
