@@ -225,9 +225,6 @@ jobs:
   pre-deploy:
     name: Pre-Deploy
     runs-on: ubuntu-latest
-    needs: check
-    # Run only on pushing a tag
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Dummy
         run: |
@@ -236,7 +233,7 @@ jobs:
   build-tarball:
     name: Tarball
     runs-on: ubuntu-latest
-    needs: pre-deploy
+    needs: [pre-deploy, gen_llhttp]
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -271,7 +268,7 @@ jobs:
   build-wheels:
     name: Build wheels on ${{ matrix.os }} ${{ matrix.qemu }} ${{ matrix.musl }}
     runs-on: ${{ matrix.os }}
-    needs: pre-deploy
+    needs: [pre-deploy, gen_llhttp]
     strategy:
       matrix:
         os: ["ubuntu-latest", "windows-latest", "macos-latest", "ubuntu-24.04-arm"]
@@ -360,6 +357,8 @@ jobs:
     name: Deploy
     needs: [build-tarball, build-wheels]
     runs-on: ubuntu-latest
+    # Seal: keep deploy/PyPI-publish gated to tag pushes only; never runs on the fork master push
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
 
     permissions:
       contents: write  # IMPORTANT: mandatory for making GitHub Releases
